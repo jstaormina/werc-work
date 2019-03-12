@@ -1,0 +1,13 @@
+{
+  "name": "werc-work",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./app.js"
+  },
+  "dependencies": {
+    "exceljs": "^1.7.0",
+    "googleapis": "^27.0.0",
+    "moment": "^2.24.0"
+  }
+}
