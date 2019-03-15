@@ -20,7 +20,7 @@ const colorMap = {
 
 (async () => {
     const events = await parseXlsx();
-    updateCalendarWithEvent(events);
+    await updateCalendarWithEvent(events);
 })();
 
 async function parseXlsx() {
@@ -69,8 +69,9 @@ async function parseXlsx() {
 function updateCalendarWithEvent(events) {
     fs.readFile('credentials.json', (err, content) => {
         if (err) return console.log('Error loading client secret file:', err);
-        authorize(JSON.parse(content), (auth) => {
-            createEvents(auth, events);
+        authorize(JSON.parse(content), async (auth) => {
+            await removeAllTrainingEvents(auth, events[0].start.dateTime, events[events.length - 1].end.dateTime);
+            await createEvents(auth, events);
         });
     });
 }
@@ -111,19 +112,78 @@ function getAccessToken(oAuth2Client, callback) {
     });
 }
 
-function createEvents(auth, workoutEvents) {
+async function createEvents(auth, workoutEvents) {
     const calendar = google.calendar({version: 'v3', auth});
+    for (const event of workoutEvents) {
+        await timeout(200);
+        try {
+            const response = await new Promise((resolve, reject) => {
+                calendar.events.insert({
+                    'calendarId': 'primary',
+                    'resource': event
+                }, (err, response) => {
+                    if (err) {
+                        reject(err);
+                    }
+                    resolve(response);
+                });
+            });
+            console.log('New event created: ' + response.data.htmlLink);
+        } catch (err) {
+            console.log(err.message);
+        }
+    }
+}
 
-    workoutEvents.forEach((event) => {
-        calendar.events.insert({
-            'calendarId': 'primary',
-            'resource': event
+async function removeAllTrainingEvents(auth, timeMin, timeMax) {
+    try {
+        const calendar = google.calendar({version: 'v3', auth});
+        const workoutEvents = await getExistingEvents(auth, timeMin, timeMax);
+        for (const event of workoutEvents) {
+            await timeout(200);
+            try {
+                await new Promise((resolve, reject) => {
+                    calendar.events.delete({
+                        'calendarId': 'primary',
+                        'eventId': event.id
+                    }, (err, response) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        resolve(response);
+                    });
+                });
+                console.log('Event Removed: ' + event.id);
+            } catch (err) {
+                console.log(err.message);
+            }
+        }
+    } catch (err) {
+        console.log('The API returned an error: ' + err);
+    }
+}
+
+function getExistingEvents(auth, timeMin, timeMax) {
+    const calendar = google.calendar({version: 'v3', auth});
+    return new Promise((resolve, reject) => {
+        calendar.events.list({
+            calendarId: 'primary',
+            q: 'Marathon Training',
+            timeMin: timeMin.toISOString(),
+            timeMax: timeMax.toISOString(),
+            maxResults: 200,
+            singleEvents: true,
+            orderBy: 'startTime',
         }, (err, res) => {
             if (err) {
-                console.log('Error: ' + err);
-                return
+                reject(err);
             }
-            console.log('New event created: ' + res.data.htmlLink);
-        })
+            const events = res.data.items;
+            resolve(events);
+        });
     });
+}
+
+function timeout(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
